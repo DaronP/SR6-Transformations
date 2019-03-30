@@ -2,6 +2,7 @@ import struct
 from collections import namedtuple
 from random import randint
 import numpy as np
+from obj import Obj, Texture
 
 def char(c):
 	return struct.pack("=c",c.encode('ascii'))
@@ -13,11 +14,14 @@ def color(r,g,b):
 	return bytes([r, g, b])
 	
 	
-def bbox(A,B,C):
-	xs = [A.x, B.x, C.x].sort()
-	ys = [A.y, B.y, C.y].sort()
-	
-	return V2(xs[0], ys[0]), V2(xs[2], ys[2])
+def bbox(*vertices):
+   
+  xs = [ vertex.x for vertex in vertices ]
+  ys = [ vertex.y for vertex in vertices ]
+  xs.sort()
+  ys.sort()
+
+  return V2(xs[0], ys[0]), V2(xs[-1], ys[-1])
 
 def barycentric(A,B,C,P):
 	cx, cy, cz = cross(
@@ -54,8 +58,12 @@ def mul(v0, k):
 	return V3(v0.x * k, v0.y * k, v0.z * k)
 	
 def dot(v0, v1):
-	return v0.x * v1.x + v0.y * v1.y + v0.z * v0.z
-	
+  
+  try:
+	  return v0[0] * v1[0] + v0[1] * v1[1] + v0[2] * v0[2]
+  except:
+    return v0[0] * v1[0] + v0[1] * v1[1]
+
 def cross(v0, v1):
 	return V3(
 		v0.y * v1.z - v0.z * v1.y,
@@ -64,20 +72,20 @@ def cross(v0, v1):
 		)
 
 def matrixMul(mat1, mat2):
-    matFinal = [
+    
+    try:
+      matFinal = [
       [0,0,0,0],
       [0,0,0,0],
       [0,0,0,0],
       [0,0,0,0]
-    ]
-    try:
+      ]
       for i in range (0, 3):
           for j in range(0, 3):
               for k in range(0, 3):
                 matFinal[i][j] += int(round(mat1[i][k] * mat2[k][j]))
     except:
-      print(mat1)
-      print(mat2)
+      matFinal =[0,0,0,0]
       for i in range (3):
             for k in range(3):
               matFinal[i] += int(round(mat1[i][k] * mat2[k]))
@@ -105,58 +113,6 @@ def try_int(s, base=10, val=None):
     return val
 
 
-class Obj(object):
-    def __init__(self, filename):
-        with open(filename) as f:
-            self.lines = f.read().splitlines()
-        self.vertices = []
-        self.tvertices = []
-        self.normals = []        
-        self.faces = []
-        self.read()
-
-    def read(self):
-        for line in self.lines:
-            if line:
-                prefix, value = line.split(' ', 1)
-                if prefix == 'v':
-                    self.vertices.append(list(map(float, value.split(' '))))
-                elif prefix == 'vt':
-                    self.tvertices.append(list(map(float, value.split(' '))))                    
-                elif prefix == 'vn':
-                    self.normals.append(list(map(float, value.split(' '))))                    
-                elif prefix == 'f':
-                    self.faces.append([list(map(try_int, face.split('/'))) for face in value.split(' ')])
-
-
-class Texture(object):
-    def __init__(self, path):
-        self.path = path
-        self.read()
-
-    def read(self):
-        image = open(self.path, "rb")
-        image.seek(2 + 4 + 4)
-        header_size = struct.unpack("=l", image.read(4))[0]
-        image.seek(2 + 4 + 4 + 4 + 4)
-        
-        self.width = struct.unpack("=l", image.read(4))[0] 
-        self.height = struct.unpack("=l", image.read(4))[0]
-        self.pixels = []
-        image.seek(header_size)
-        for y in range(self.height):
-            self.pixels.append([])
-            for x in range(self.width):
-                b = ord(image.read(1))
-                g = ord(image.read(1))
-                r = ord(image.read(1))
-                self.pixels[y].append(color(r,g,b))
-        image.close()
-
-    def get_color(self, tx, ty):
-        x = int(tx * self.width)
-        y = int(ty * self.height)
-        return self.pixels[y][x]
 
 
 class Render(object):
@@ -266,6 +222,7 @@ class Render(object):
 
   def triangle(self, A, B, C, texture = None, texture_coords=(), intensity=()):
     bbox_min, bbox_max = bbox(A, B, C)
+    print(bbox_min, bbox_max)
     
     for x in range(bbox_min.x, bbox_max.x + 1):
         for y in range(bbox_min.y, bbox_max.y + 1):
@@ -283,7 +240,6 @@ class Render(object):
             
             z = A.z * w + B.z * v + C.z * u
             
-                
             if z > self.zbuffer[x][y]:
                 self.point(x,y, color)
                 self.zbuffer[x][y] = z
@@ -293,10 +249,7 @@ class Render(object):
     augmented_vertex = [vertex[0], vertex[1], vertex[2], 1]
     m1 = matrixMul(self.ViewPort, self.Projection)
     m2 = matrixMul(m1, self.Watch)
-    #print (m2)
-    #print(augmented_vertex)
-    transformed_vertex = matrixMul(m2, augmented_vertex) #Aqui esta el error
-    print(transformed_vertex)
+    transformed_vertex = matrixMul(m2, augmented_vertex)
 
     return V3(
       round(transformed_vertex[0]),
@@ -350,7 +303,7 @@ class Render(object):
             self.transform(model.vertices[f4], translate, scale)
           ]
 
-          normal = norm(cross(sub(vertices[0], vertices[1]), sub(vertices[1], vertices[2])))  # no necesitamos dos normales!!
+          normal = norm(cross(sub(vertices[0], vertices[1]), sub(vertices[1], vertices[2])))
           intensity = dot(normal, light)
           grey = round(255 * intensity)
           if grey < 0:
@@ -358,8 +311,26 @@ class Render(object):
   
           A, B, C, D = vertices 
         
-          self.triangle(A, B, C, color(grey, grey, grey))
-          self.triangle(A, C, D, color(grey, grey, grey))
+          if not texture:
+            grey = round(255 * intensity)
+            if grey < 0:
+              continue
+            self.triangle(A, B, C, color(grey, grey, grey))
+            self.triangle(A, C, D, color(grey, grey, grey))
+					
+          else:
+            t1 = face[0][1] -1
+            t2 = face[1][1] -1
+            t3 = face[2][1] -1
+            t4 = face[3][1] -1
+            
+            tA = V2(*model.tvertices[t1])
+            tB = V2(*model.tvertices[t2])
+            tC = V2(*model.tvertices[t3])
+            tD = V2(*model.tvertices[t4])
+          
+            self.triangle(A, B, C, texture=texture, texture_coords=(tA, tB, tC))
+            self.triangle(A, C, D, texture=texture, texture_coords=(tA, tC, tD))
 
 
 
@@ -390,21 +361,8 @@ class Render(object):
 
   def loadViewportMatrix(self, x = 0, y = 0):
     self.ViewPort = [
-      [int(round(self.width/4)), 0, 0, int(round(self.width/2))],
-      [0, int(round(self.height/4)), 0, int(round(self.width/2))],
-      [0, 0, 128, 0],
+      [int(round(self.width/2)), 0, 0, int(round(self.width/2))],
+      [0, int(round(self.height/2)), 0, int(round(self.width/2))],
+      [0, 0, 128, 128],
       [0, 0, 0, 1]
     ]
-
-
-an = 1900
-al = 1900
-
-r = Render(an, al)
-t = Texture('Poopy.bmp')
-r.light = V3(0, 0, 1)
-
-r.lookAt(V3(10, 1, 3), V3(0, 0, 0), V3(0, 1, 0))
-
-r.load('Poopybutthole.obj', (0,0,0), (1,1,1), texture=t)
-r.write('out.bmp')
