@@ -222,7 +222,6 @@ class Render(object):
 
   def triangle(self, A, B, C, texture = None, texture_coords=(), intensity=()):
     bbox_min, bbox_max = bbox(A, B, C)
-    print(bbox_min, bbox_max)
     
     for x in range(bbox_min.x, bbox_max.x + 1):
         for y in range(bbox_min.y, bbox_max.y + 1):
@@ -241,8 +240,8 @@ class Render(object):
             z = A.z * w + B.z * v + C.z * u
             
             if z > self.zbuffer[x][y]:
-                self.point(x,y, color)
-                self.zbuffer[x][y] = z
+              self.point(x,y, color)
+              self.zbuffer[x][y] = z
 
 
   def transform(self, vertex, translate=(0, 0, 0), scale=(1, 1, 1)):
